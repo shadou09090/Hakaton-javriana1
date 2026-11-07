@@ -38,7 +38,9 @@ def sliced_val():
         if (out/(p.stem+'.txt')).exists(): continue
         im=cv2.imread(str(p))
         assert im is not None,p
-        a=np.asarray(predecir_imagen_sliced(model,im,tile_size=512,overlap=.25),dtype=float).reshape(-1,6)
+        dets=predecir_imagen_sliced(model,im,tile_size=512,overlap=.25)
+        # The existing helper returns an extra model weight for single-tile images.
+        a=np.asarray([d[:6] for d in dets],dtype=float).reshape(-1,6)
         write_one(out,p.stem,a)
         if (i+1)%100==0 or i+1==len(files): print('SLICED',i+1,len(files),'seconds',round(time.time()-start,1),flush=True)
 
@@ -54,6 +56,19 @@ def load(path):
 
 def combine(inputs,config):
     if config['kind']=='single': return inputs[config['sources'][0]]
+    if config['kind']=='class_select':
+        cache={}
+        for cfg in config['class_configs']:
+            key=json.dumps(cfg,sort_keys=True)
+            if key not in cache:cache[key]=combine(inputs,cfg)
+        out={}
+        for name in next(iter(cache.values())):
+            pieces=[]
+            for c,cfg in enumerate(config['class_configs']):
+                a=cache[json.dumps(cfg,sort_keys=True)][name];pieces.append(a[a[:,0]==c])
+            arr=np.concatenate(pieces)
+            out[name]=arr[np.argsort(-arr[:,5],kind='stable')[:300]]
+        return out
     names=set(inputs[config['sources'][0]])
     assert all(set(inputs[s])==names for s in config['sources'])
     out={}
@@ -99,6 +114,21 @@ def search():
         save_json(work/'comparison.json',reports)
         if best is None or score>best['calibration']['after']['total']['score']:
             best=report;best_preds=pred
+    # Each class contributes equally to the official metric. Try measured class
+    # specialization, then reevaluate the assembled <=300 predictions end to end.
+    class_configs=[]
+    for name in ev.CLASES:
+        def class_score(r):
+            m=r['calibration']['after']['total']['por_clase'][name]
+            return .7*m['ap50_95']+.3*m['f1']
+        class_configs.append(max(reports,key=class_score)['config'])
+    cfg={'name':'seleccion_por_clase','kind':'class_select','class_configs':class_configs,
+         'sources':sorted({s for c in class_configs for s in c['sources']})}
+    pred=combine(inputs,cfg);cal=calibrate(pred,gt);report={'config':cfg,'calibration':cal}
+    reports.append(report);save_json(work/'comparison.json',reports)
+    print('FUSION',cfg['name'],'score',round(cal['after']['total']['score'],6),flush=True)
+    if cal['after']['total']['score']>best['calibration']['after']['total']['score']:
+        best=report;best_preds=pred
     save_json(work/'selected.json',best)
     write_preds(work/'selected_val_raw',best_preds)
     write_preds(work/'selected_val_calibrated',best_preds,best['calibration']['gammas'])
@@ -122,5 +152,8 @@ def search():
 
 
 if __name__=='__main__':
+    import sys
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
     p=argparse.ArgumentParser();p.add_argument('action',choices=['sliced-val','tta-pc1','search']);a=p.parse_args()
     {'sliced-val':sliced_val,'tta-pc1':tta_pc1,'search':search}[a.action]()

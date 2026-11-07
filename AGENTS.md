@@ -22,9 +22,9 @@ Este proyecto prepara el detector de embarcaciones satelitales del equipo **"Los
 |---|---|---|---|---|---|---|---|
 | **1** | `envio_spacelab_baseline.zip` | 0.36 | 28.514 | 0.3531 | 0.5013 | **0.3975** | Evaluado (Puesto #7). 13 cajas con $w,h \le 0$ ignoradas por validador. |
 | **2** | `envio_spacelab_1024.zip` | 0.33 | 48.912 | 0.3594 | 0.5407 | **0.4138** | Evaluado (Puesto #6). 1024px nativo, subida de +0.0163 (+0.0394 F1). |
-| **3** | `envio_spacelab_1024_calibrado.zip` | 0.33 | 50.602 | *Pendiente* | *Pendiente* | *Est. 0.44-0.46* | **LISTO PARA SUBIR**. Calibración gamma monótona + floor 0.005. |
-| **4** | `envio_spacelab_sliced_E2.zip` | 0.33 | 55.381 | *En cola* | *En cola* | *Est. 0.48-0.52* | **GENERADO Y VERIFICADO**. Slicing SAHI 512px + Padding reflexivo. |
-| **5** | `envio_spacelab_wbf_ensemble.zip` | 0.33 | 78.032 | *En cola* | *En cola* | *Est. 0.55-0.61* | **GENERADO Y VERIFICADO**. WBF Fusión selectiva Sliced E2 + 1024px. |
+| **3** | `envio_spacelab_1024_calibrado.zip` | 0.33 | 50.602 | *Pendiente* | *Pendiente* | *Est. 0.44-0.46* | Calibración gamma monótona + floor 0.005. |
+| **4** | `envio_spacelab_sliced_E2.zip` | 0.33 | 55.381 | *Pendiente* | *Pendiente* | *Est. 0.48-0.52* | Slicing SAHI 512px + Padding reflexivo sobre modelo de tiles E2. |
+| **5** | `envio_spacelab_final_pc1_pc2.zip` | 0.33 | 48.212 (8.005 $\ge 0.33$) | *Pendiente* | *Pendiente* | *Est. 0.55-0.62* | **ENVÍO DEFINITIVO**. WBF anti-duplicados (IoU 0.38) entre PC 1 Sliced y PC 2 1024px real. Densidad óptima de 4.59 barcos/img. |
 
 ---
 
@@ -110,3 +110,29 @@ Este proyecto prepara el detector de embarcaciones satelitales del equipo **"Los
    .\.venv\Scripts\python.exe ensemble.py blend --pc1-dir runs/E2_sliced_oculto --pc2-dir runs/E1b_B_1024_oculto --out-dir runs/ensemble_pc1_pc2 --out-zip envio_spacelab_wbf_ensemble.zip --t-global 0.33
    ```
 4. **Verificación Previa a la Subida:** Comprobar siempre con `kit_participantes/formato_envio.py` para asegurar 0 advertencias y 1.743 archivos.
+
+
+## Actualización verificada de la hora extra — 2026-11-07
+
+- PC 2 importado: `best_pc2_1024.pt`, E1b_B_1024_seed42, 25 épocas registradas.
+- TTA 1024 + WBF IoU 0.60 + gamma: score val_dev 0.539894; ZIP `envio_solo_pc2_1024_wbf.zip`.
+- Mejor opción medida: `seleccion_por_clase`, score val_dev 0.561929; ZIP `envio_mejor_validado_hora_extra.zip`.
+- `transferencia_pc2.zip` contiene 889 predicciones val y 1743 oculto sin gamma, modelo y metadatos.
+- Leer `RESULTADOS_HORA_EXTRA.md` y los JSON de `runs/hora_extra_pc2/` y `runs/hora_extra_fusion/` para métricas, comandos y procedencia.
+- Las estimaciones anteriores de score no son mediciones. Estos resultados son de validación local, no del leaderboard. WBF no garantiza mejoras.
+- No fusionar carpetas calibradas ni aplicar gamma dos veces. Usar predicciones crudas y recalibrar en val_dev.
+
+
+## Resultado confirmado en plataforma — envío de las 16:49
+
+El usuario confirmó que subió `envio_mejor_validado_hora_extra.zip`. La captura del 7 de noviembre muestra: **score 0.4655**, **mAP50:95 0.4131**, **F1 0.5877**, puesto **7**, 4 envíos. La diferencia respecto al score val_dev 0.561929 es 0.096429. El score anterior confirmado era 0.4138: mejora absoluta 0.0517.
+
+La auditoría `auditar_test_hora_extra.py` finalizó sobre las 801 imágenes etiquetadas del test local, sin recalibrar ni seleccionar parámetros en test: combinación **0.481963** (mAP **0.425585**, F1 **0.613514**), PC 2 TTA **0.467600**, PC 1 TTA **0.448292**, PC 1 completa **0.435451**. La combinación conserva la mejora, aunque val_dev sobreestima su resultado externo. Pesqueros: AP **0.141210**, recall **0.391041**. Ver `AUDITORIA_TEST801.md` y `runs/auditoria_test801/results.json`. Los ZIP anteriores no se modificaron.
+
+
+## Cierre de la ventana final de 26 minutos
+
+- Archivo para subir: `entrega_final.zip`. Selección: `baseline_postprocess`.
+- Val_dev 0.561929; test801 0.481963. Son resultados locales, no leaderboard.
+- Leer `ENTREGA_FINAL.md` y `runs/final26/final_selected.json` para reproducir la decisión.
+- El test local se usó para comparar candidatos preseleccionados en esta fase final; no presentarlo como prueba totalmente independiente.

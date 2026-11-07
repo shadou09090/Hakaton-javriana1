@@ -1,10 +1,8 @@
 .idea/
 
-# Dataset
+# Datasets, weights and zips
 spacelab_dataset/
-spacelab_dataset.zip
-envio_spacelab.zip
-envio_*.zip
+*.zip
 .venv/
 derived/
 runs/
