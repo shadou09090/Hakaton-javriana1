@@ -14,9 +14,14 @@ os.environ.setdefault("YOLO_CONFIG_DIR", str(ROOT/"runs/.ultralytics"))
 
 
 def guardar(path, value):
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(value, indent=2, default=str), encoding="utf-8")
-    tmp.replace(path)
+    for attempt in range(5):
+        try:
+            tmp = path.with_name(f"{path.stem}_{os.getpid()}_{attempt}.tmp")
+            tmp.write_text(json.dumps(value, indent=2, default=str), encoding="utf-8")
+            tmp.replace(path)
+            return
+        except (PermissionError, OSError):
+            time.sleep(0.15 * (attempt + 1))
 
 
 def main():
@@ -31,6 +36,13 @@ def main():
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--model", default="yolo26n.pt")
     parser.add_argument("--resume", type=Path)
+    parser.add_argument("--optimizer", default="AdamW")
+    parser.add_argument("--lr0", type=float, default=0.001)
+    parser.add_argument("--box", type=float, default=8.5)
+    parser.add_argument("--cls", type=float, default=0.8)
+    parser.add_argument("--degrees", type=float, default=0.0)
+    parser.add_argument("--mosaic", type=float, default=0.7)
+    parser.add_argument("--mixup", type=float, default=0.1)
     args = parser.parse_args()
     import torch
     import yaml
@@ -50,9 +62,21 @@ def main():
                   epochs=args.epochs, name=args.name, config=vars(args),
                   gpu=torch.cuda.get_device_name(0), torch=torch.__version__,
                   python=sys.version, workers=args.workers)
+    if args.resume and (output/"status.json").exists():
+        try:
+            prev = json.loads((output/"status.json").read_text(encoding="utf-8"))
+            if "started" in prev:
+                status["started"] = prev["started"]
+            if "metrics" in prev:
+                status["metrics"] = prev["metrics"]
+        except Exception:
+            pass
     def update(phase, **kw):
-        status.update(phase=phase, updated=time.time(), elapsed_seconds=time.time()-began, **kw)
-        guardar(output/"status.json", status)
+        try:
+            status.update(phase=phase, updated=time.time(), elapsed_seconds=time.time()-began, **kw)
+            guardar(output/"status.json", status)
+        except Exception:
+            pass
 
     try:
         test = torch.randn((512, 512), device="cuda")
@@ -64,8 +88,9 @@ def main():
         packages = subprocess.check_output([sys.executable, "-m", "pip", "freeze"], text=True)
         (output/"requirements-lock.txt").write_text(packages, encoding="utf-8")
         model = YOLO(str(args.resume) if args.resume else args.model)
-        weight_path = Path(model.ckpt_path)
-        status["initial_weights_sha256"] = hashlib.sha256(weight_path.read_bytes()).hexdigest()
+        weight_path = Path(args.resume if args.resume else (getattr(model, "ckpt_path", None) or args.model))
+        if weight_path.exists():
+            status["initial_weights_sha256"] = hashlib.sha256(weight_path.read_bytes()).hexdigest()
         update("training")
 
         def epoch_done(trainer):
@@ -90,8 +115,10 @@ def main():
                         imgsz=args.imgsz, batch=args.batch, workers=args.workers,
                         amp=True, cache=False, seed=42, deterministic=True,
                         project=str(args.output_root.resolve()), name=args.name, exist_ok=True,
-                        patience=8, cos_lr=True, close_mosaic=5 if args.epochs > 5 else 0,
-                        fliplr=0.5, flipud=0.5, mosaic=0.5, mixup=0.0,
+                        patience=10, cos_lr=True, optimizer=args.optimizer, lr0=args.lr0, lrf=0.01,
+                        close_mosaic=5 if args.epochs > 5 else 0,
+                        degrees=args.degrees, fliplr=0.5, flipud=0.5, scale=0.5, mosaic=args.mosaic, mixup=args.mixup,
+                        box=args.box, cls=args.cls, dfl=1.5,
                         save=True, save_period=5, plots=True)
         best = Path(model.trainer.best)
         if not best.exists():

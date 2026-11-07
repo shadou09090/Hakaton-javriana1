@@ -3,6 +3,8 @@
 # Dataset
 spacelab_dataset/
 spacelab_dataset.zip
+envio_spacelab.zip
+envio_*.zip
 .venv/
 derived/
 runs/
