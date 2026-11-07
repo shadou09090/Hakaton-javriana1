@@ -1,0 +1,11 @@
+.idea/
+
+# Dataset
+spacelab_dataset/
+spacelab_dataset.zip
+.venv/
+derived/
+runs/
+*.pt
+__pycache__/
+*.log
